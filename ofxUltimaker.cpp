@@ -12,6 +12,12 @@ void ofxUltimaker::connect(int portnumber, int speed) {
     ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
 }
 
+void ofxUltimaker::connect(string portname, int speed) {
+    //listDevices();
+    setup(portname,speed);
+    ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
+}
+
 void ofxUltimaker::readTemperature() {
     send("M105");
 }
