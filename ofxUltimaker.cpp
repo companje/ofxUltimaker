@@ -13,7 +13,7 @@ bool ofxUltimaker::connect(int portnumber, int speed) {
         #if OF_VERSION_MINOR==0
             ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
         #else
-            ofAddListener(ofEvents.update(), this, &ofxUltimaker::update);
+            ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
         #endif
     }
     return connected;
@@ -26,7 +26,7 @@ bool ofxUltimaker::connect(string portname, int speed) {
         #if OF_VERSION_MINOR==0
             ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
         #else
-            ofAddListener(ofEvents.update(), this, &ofxUltimaker::update);
+            ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
         #endif
     }
 }
