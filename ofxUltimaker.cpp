@@ -9,13 +9,21 @@ ofxUltimaker::ofxUltimaker() {
 void ofxUltimaker::connect(int portnumber, int speed) {
     //listDevices();
     setup(portnumber,speed);
-    ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
+    #if OF_VERSION_MINOR==0
+        ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
+    #elif
+        ofAddListener(ofEvents.update(), this, &ofxUltimaker::update);
+    #endif
 }
 
 void ofxUltimaker::connect(string portname, int speed) {
     //listDevices();
     setup(portname,speed);
-    ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
+    #if OF_VERSION_MINOR==0
+        ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
+    #elif
+        ofAddListener(ofEvents.update(), this, &ofxUltimaker::update);
+    #endif
 }
 
 void ofxUltimaker::readTemperature() {
