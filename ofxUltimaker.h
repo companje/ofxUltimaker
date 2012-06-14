@@ -16,8 +16,8 @@
 class ofxUltimaker : public ofSerial {
 public:
     ofxUltimaker();
-    void connect(int portnumber=0, int speed=115200);
-    void connect(string portname=0, int speed=115200);
+    bool connect(int portnumber=0, int speed=115200);
+    bool connect(string portname="", int speed=115200);
     void readTemperature();
     void setTemperature(float temperature); //, bool waitUtilReached=false);
     void moveTo(float x, float y);
