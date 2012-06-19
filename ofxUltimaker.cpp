@@ -29,6 +29,7 @@ bool ofxUltimaker::connect(string portname, int speed) {
             ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
         #endif
     }
+    return connected;
 }
 
 void ofxUltimaker::readTemperature() {
