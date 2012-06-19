@@ -48,7 +48,7 @@ void ofxUltimaker::setTemperature(float temperature) { //, bool waitUtilReached)
 //    if (waitUtilReached) {
 //        isBusy =
 //    }
-    send("M109 S"+ofToString(temperature));
+    request("M104 S"+ofToString(temperature));
     //string str = request( (waitUtilReached ? "M104" : "M109") + " S" + ofToString(temperature));
     //send("M104 S"+ofToString(temperature));
     //isBu
