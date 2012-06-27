@@ -6,30 +6,32 @@ ofxUltimaker::ofxUltimaker() {
     temperature = 0;
 }
 
-bool ofxUltimaker::connect(int portnumber, int speed) {
-    //listDevices();
-    bool connected = setup(portnumber,speed);
-    if (connected) {
-        #if OF_VERSION_MINOR==0
-            ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
-        #else
-            ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
-        #endif
+bool ofxUltimaker::autoConnect() {
+    //without params autodetect ultimaker
+    listDevices();
+    buildDeviceList();
+    for (int k=0; k < (int)devices.size(); k++){
+        if (devices[k].getDeviceName().find("usbmodem")!=string::npos) { //osx
+            return connect(k);
+        }
     }
-    return connected;
+}
+
+bool ofxUltimaker::connect(int portnumber, int speed) {
+    return connect(devices[portnumber].getDeviceName(), speed);
 }
 
 bool ofxUltimaker::connect(string portname, int speed) {
     //listDevices();
-    bool connected = setup(portname,speed);
-    if (connected) {
+    
+    if ((isConnected = setup(portname,speed))) {
         #if OF_VERSION_MINOR==0
             ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
         #else
             ofAddListener(ofEvents().update, this, &ofxUltimaker::update);
         #endif
     }
-    return connected;
+    return isConnected;
 }
 
 void ofxUltimaker::readTemperature() {
@@ -147,6 +149,8 @@ void ofxUltimaker::moveTo(float x, float y) {
 }
 
 string ofxUltimaker::request(string cmd) {
+    if (!isConnected) return "";
+    
     //dit moet worden vervangen door async event. Of kan het naast elkaar leven?
     send(cmd);
     string str;
@@ -161,6 +165,7 @@ string ofxUltimaker::request(string cmd) {
 }
 
 void ofxUltimaker::send(string cmd) {
+    if (!isConnected) return;
     if (isBusy) {
         cout << "Ultimaker is busy processing '"<<prevCmd<<"'. Please resend '"<<cmd<<"' again later" << endl;
     } else {

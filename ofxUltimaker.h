@@ -16,6 +16,7 @@
 class ofxUltimaker : public ofSerial {
 public:
     ofxUltimaker();
+    bool autoConnect();
     bool connect(int portnumber=0, int speed=115200);
     bool connect(string portname="", int speed=115200);
     void readTemperature();
@@ -34,6 +35,7 @@ public:
 
     bool isPrinting;
     bool isBusy;
+    bool isConnected;
     ofxGCode gcode;
     int currentLine;
     string prevCmd;
