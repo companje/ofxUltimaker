@@ -4,6 +4,7 @@ ofxUltimaker::ofxUltimaker() {
     isBusy = false;
     isPrinting = false;
     temperature = 0;
+    isStartTagFound = false;
 }
 
 bool ofxUltimaker::autoConnect() {
@@ -11,7 +12,8 @@ bool ofxUltimaker::autoConnect() {
     listDevices();
     buildDeviceList();
     for (int k=0; k < (int)devices.size(); k++){
-        if (devices[k].getDeviceName().find("usbmodem")!=string::npos) { //osx
+        if (devices[k].getDeviceName().find("usbmodem")!=string::npos ||
+            devices[k].getDeviceName().find("usbserial")!=string::npos) { //osx
             return connect(k);
         }
     }
@@ -22,8 +24,6 @@ bool ofxUltimaker::connect(int portnumber, int speed) {
 }
 
 bool ofxUltimaker::connect(string portname, int speed) {
-    //listDevices();
-    
     if ((isConnected = setup(portname,speed))) {
         #if OF_VERSION_MINOR==0
             ofAddListener(ofEvents.update, this, &ofxUltimaker::update);
@@ -62,6 +62,7 @@ void ofxUltimaker::setTemperature(float temperature) { //, bool waitUtilReached)
 //}
 
 void ofxUltimaker::load(string filename) {
+    cout << "ultimaker load: " << filename << endl;
     gcode.load(filename);
 }
 
@@ -69,19 +70,32 @@ void ofxUltimaker::startPrint() {
     isPrinting = true;
     currentLine = 0;
     cout << "start" << endl;
-    if (gcode.lines.size()==0) {
-        cout << "no gcode loaded" << endl;
-    } else {
-        send(gcode.lines.at(0)); //send first line
-    }
+    processQueue();
+}
+
+void ofxUltimaker::processQueue() {
+    //ignore comments and empty lines
+    while (1) {
+        if (currentLine>=gcode.lines.size()) return;
+        else if (gcode.lines.at(currentLine)=="") currentLine++;
+        else if (gcode.lines.at(currentLine).at(0)==';') currentLine++;
+        else { 
+            send(gcode.lines.at(currentLine));
+            currentLine++;
+            return; 
+        }
+    }    
 }
 
 void ofxUltimaker::update(ofEventArgs &e) {
+    
     for (int i=0; i<100; i++) {
         string str = ofxGetSerialString(*this,'\n');
         if (str!="") {
 
             cout << "> " << str << endl;
+            
+            if (str.find("start")!=string::npos) isStartTagFound=true;
 
             if (isOk(str)) {
 
@@ -92,30 +106,17 @@ void ofxUltimaker::update(ofEventArgs &e) {
                 }
 
                 isBusy = false;
-                if (gcode.lines.size()>0 && currentLine<gcode.lines.size()) {
-                    send(gcode.lines.at(currentLine));
-                    currentLine++;
-                }
+                processQueue();
+                
             } else {
 
                 if (str[0]=='T') { //got temperature
-                    //cout << "got temp" << endl;
-                    //vector<string> items = ofSplitString(str," "); //ofxParseString(str,"T:%f E:%d W:%d");
                     temperature = ofToFloat(ofSplitString(str,":")[1]);
-    //                string waitTimer = ofSplitString(items[2],":")[0];
-    //                if (waitTimer=="0") {
-    //                    isBusy=false;
-    //                    currentLine++;
-    //                }
                 }
             }
         }
     }
 }
-
-//MAX SCALE is dat boundingbox per laag meer dan bijv 0.5 mm mag toenemen.
-
-//(boundingBox.width/(boundingBox.width-0.4));
 
 void ofxUltimaker::stopPrint() {
     cout << "stop" << endl;
@@ -142,6 +143,10 @@ void ofxUltimaker::physicalHomeXYZ() {
 
 bool ofxUltimaker::isOk(string str) {
     return (str.length()>=2 && str[0]=='o' && str[1]=='k');
+}
+
+bool ofxUltimaker::isComment(string str) {
+    return (str.length()>0 && str.at(0)==';');
 }
 
 void ofxUltimaker::moveTo(float x, float y) {

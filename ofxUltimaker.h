@@ -23,6 +23,8 @@ public:
     void setTemperature(float temperature); //, bool waitUtilReached=false);
     void moveTo(float x, float y);
     bool isOk(string str);
+    bool isComment(string str);
+    void processQueue();
     void physicalHomeXYZ();
     void setAbsolute();
     void setRelative();
@@ -41,6 +43,7 @@ public:
     string prevCmd;
     float temperature;
     int waitTimer;
+    bool isStartTagFound;
 
     string request(string cmd);
     void send(string cmd);
