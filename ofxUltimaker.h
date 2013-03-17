@@ -2,6 +2,7 @@
 
 #include "ofMain.h"
 #include "ofxSerial.h"
+#include "ofxExtras.h"
 
 class ofxUltimaker : public ofThread {
 public:
@@ -18,57 +19,117 @@ public:
     int frameRate;
     deque<string> queue;
     float temperature;
-    deque<string> messages;
+//    deque<string> messages;
+    vector<string> deviceNames;
+    int deviceIndex;
+    int preBuffer;
     
     ofxUltimaker() {
+        preBuffer = 0;
         isConnectedToPort = false;
         isStartTagFound = false;
         deviceSpeed = DEFAULT_DEVICE_SPEED;
         isReadyForNextCommand = false;
-        frameRate = 100;
+        frameRate = 800;
         temperature = 0;
+        deviceIndex = 0;
     }
     
-    void setup(string _deviceName="", int _deviceSpeed=DEFAULT_DEVICE_SPEED) {
-        deviceName = _deviceName;
-        deviceSpeed = _deviceSpeed;
-        
-        if (deviceName=="") {
-             deviceName = guessDeviceName();
-        }
-        
-        startThread(true, false);   // blocking, verbose
+    void setup() {
+        startThread(true, false);   // blocking=true, verbose=false
     }
     
     void update() {
         if (!checkConnection()) return;
         
+        lockDevice(deviceName); //touch lock-file
+   
         processQueue();
     }
     
+    void reconnect(string deviceName, int deviceSpeed) {
+        cout << "reconnect: " << deviceName << " @ " << deviceSpeed << endl;
+        ofSleepMillis(500);
+        serial.close();
+        ofSleepMillis(500);
+        serial.close();
+        ofSleepMillis(500);
+        isConnectedToPort = serial.setup(deviceName, deviceSpeed);
+        ofSleepMillis(500);
+        serial.close();
+        serial.close();
+        serial.flush();
+        ofSleepMillis(500);
+        isConnectedToPort = serial.setup(deviceName, deviceSpeed);
+        ofSleepMillis(500);
+        cout << (isConnectedToPort ? "successfully re-connected" : "could not re-connect") << endl;
+    }
+    
+    bool isDeviceLocked(string path) {
+        string name = ofxStringAfterFirst(path,".")+".lock";
+        unsigned int age = ofxGetFileAge(ofFile(name).getAbsolutePath());
+        ofLogNotice() << "age of lock file: " << age;
+        if (age>20) unlockDevice(path);
+        return ofFile(name).exists();
+    }
+    
+    void lockDevice(string path) {
+        string name = ofxStringAfterFirst(path,".");
+        ofxSaveString(name+".lock", "locked");
+    }
+    
+    void unlockDevice(string path) {
+        string name = ofxStringAfterFirst(path,".");
+        if (ofFile(name+".lock").exists()) {
+            ofLogNotice() << "unlocking " << name;
+            ofFile(name+".lock").remove();
+        }
+    }
+    
+    void unlockAllDevices() {
+        deviceNames = serial.getArduinoDevices();
+        for (int i=0; i<deviceNames.size(); i++) {
+            unlockDevice(deviceNames[i]);
+        }
+    }
+    
     bool checkConnection() {
+
         if (!isConnectedToPort) {
-            isConnectedToPort = serial.setup(deviceName, deviceSpeed);
+        
+            deviceNames = serial.getArduinoDevices();
+            deviceSpeed = DEFAULT_DEVICE_SPEED;
+
+            for (int i=0; i<deviceNames.size(); i++) {
+                cout << i << ": " << deviceNames[i] << endl;
+                
+                if (!isDeviceLocked(deviceNames[i])) {
+                    deviceName = deviceNames[i];
+                    lockDevice(deviceName);
+                    //isConnectedToPort = serial.setup(deviceName, deviceSpeed);
+                    reconnect(deviceName, deviceSpeed);
+                    break;
+                }
+            }
             
             if (!isConnectedToPort) {
-                stopThread();
-                ofLogError() << "could not connect to '" << deviceName << "' at " << deviceSpeed << " bps";
-                vector<string> devices = getArduinoDevices();
-                if (devices.size()>0) cout << "other options: " << endl;
-                for (int i=0; i<devices.size(); i++) {
-                    cout << devices.at(i) << endl;
-                }
-                return;
+                ofLogError() << "no ports available to connect to";
+                ofSleepMillis(1000);
+                //stopThread();
             }
+            
         }
         
-        if (isConnectedToPort && !isStartTagFound && deviceSpeed==250000) {
+        if (isConnectedToPort && !isStartTagFound && deviceSpeed==250000) { 
+            
             isStartTagFound = waitForStartTag();
             if (!isStartTagFound) {
                 ofLogNotice() << "no firmware 'start' found at " << deviceSpeed << " bps";
-                serial.close();
+                //disconnect();
                 deviceSpeed = 115200;
-                isConnectedToPort = serial.setup(deviceName, deviceSpeed);
+                ofLogNotice() << "Fall back to " << deviceSpeed << " bps";
+                //isConnectedToPort = serial.setup(deviceName, deviceSpeed);
+                reconnect(deviceName,deviceSpeed);
             } else {
                 ofLogNotice() << "successfully connected to firmware at " << deviceSpeed << " bps";
                 isReadyForNextCommand = true;
@@ -79,22 +140,55 @@ public:
             isStartTagFound = waitForStartTag();
             if (!isStartTagFound) {
                 ofLogNotice() << "no firmware 'start' found at " << deviceSpeed << " bps";
+                deviceSpeed = 57600;
+                ofLogNotice() << "Fall back to " << deviceSpeed << " bps";
+                reconnect(deviceName,deviceSpeed);
             } else {
                 ofLogNotice() << "successfully connected to firmware at speed " << deviceSpeed << " bps";
                 isReadyForNextCommand = true;
             }
         }
-                
+        
+        if (isConnectedToPort && !isStartTagFound && deviceSpeed==57600) {
+            isStartTagFound = waitForStartTag();
+            if (!isStartTagFound) {
+                ofLogNotice() << "no firmware 'start' found at " << deviceSpeed << " bps";
+                ofLogNotice() << "starting all over again..." << endl;
+                isConnectedToPort = false;
+                isStartTagFound = false;
+                unlockDevice(deviceName);
+                //stopThread(); //everything failed
+            } else {
+                ofLogNotice() << "successfully connected to firmware at speed " << deviceSpeed << " bps";
+                isReadyForNextCommand = true;
+            }
+        }
+        
+        if (isConnectedToPort && isStartTagFound) {
+            //still check for disconnected device
+            deviceNames = serial.getArduinoDevices();
+            if (!ofxContains(deviceNames,deviceName)) {
+                isStartTagFound = false;
+                isConnectedToPort = false;
+                unlockDevice(deviceName);
+            }
+        }
+        
         return isConnectedToPort && isStartTagFound;
     }
 
-    bool waitForStartTag(int timeToWait=10) {
-        for (int i=0; i<10*timeToWait; i++) { //max 10*sec tries at 100fps
-            string str = serial.readLine();
+    bool waitForStartTag(int timeToWait=5) {
+        cout << "wait for start tag..." << timeToWait << " sec" << endl;
+        for (int i=0; i<10*timeToWait; i++) { //max 10*sec tries at 10fps
+            string str = ofxTrimString(serial.readLine());
+            if (str!="") cout << str << endl;
             string key = "start";
             size_t idx = str.rfind(key);
-            if (idx!=string::npos && idx==(str.length()-key.length())) return true;
-            ofSleepMillis(10);
+            if (str=="start" || (idx!=string::npos && idx==(str.length()-key.length()))) {
+                ofLogNotice() << "start tag found!";
+                return true;
+            }
+            ofSleepMillis(100);
         }
         return false;
     }
@@ -112,21 +206,30 @@ public:
     }
     
     void sendCommandsFromFile(string filename, bool clearQueue=true) {
-        if (clearQueue) queue.clear();
-        ifstream f(ofToDataPath(filename).c_str(),ios::in);
-        string line;
-        while (getline(f,line)) {
-            addToQueue(line);
+        if (lock()) {
+            if (clearQueue) {
+                queue.clear();
+                preBuffer=3;
+            }
+            ifstream f(ofToDataPath(filename).c_str(),ios::in);
+            string line;
+            while (getline(f,line)) {
+                addToQueue(line);
+            }
+            f.close();
+            unlock();
         }
-        f.close();
-        
     }
     
     void processQueue() {
         string s = serial.readLine();
-        if (s!="") messages.push_back(s);
+        //if (s!="") messages.push_back(s);
         
         if (s.find("ok")==0) {
+            isReadyForNextCommand = true;
+        }
+        
+        if (s.find("rs")==0) { //for old firmware
             isReadyForNextCommand = true;
         }
         
@@ -138,17 +241,21 @@ public:
             temperature = ofToFloat(ofSplitString(s,":")[1]);
         }
         
-        if (isReadyForNextCommand && !queue.empty()) {
-            string cmd = queue.front();
-            queue.pop_front();
-            messages.push_back(cmd);
-            serial.writeLine(cmd);
-            isReadyForNextCommand = false;
+        if ((preBuffer>0 || isReadyForNextCommand)) {
+            if (preBuffer>0) preBuffer--;
+
+            if (!queue.empty()) {
+                string cmd = queue.front();
+                queue.pop_front();
+                //messages.push_back(cmd);
+                serial.writeLine(cmd);
+                isReadyForNextCommand = false;
+            }
         }
         
-        while (messages.size()>MSG_HISTORY_COUNT) {
-            messages.pop_front();
-        }
+//        while (messages.size()>MSG_HISTORY_COUNT) {
+//            messages.pop_front();
+//        }
     }
     
     void threadedFunction() {
@@ -161,26 +268,10 @@ public:
         }
     }
     
-    string guessDeviceName() {
-        vector<string> devices = getArduinoDevices();
-        return devices.size()>0 ? devices.at(0) : "";
-    }
-    
-    vector<string> getArduinoDevices() {
-        vector<string> names;
-        vector<ofSerialDeviceInfo> devices = serial.getDeviceList();
-        for (size_t i=0; i<devices.size(); i++) {
-            if (devices[i].getDevicePath().find("usbmodem")!=string::npos ||
-                (devices[i].getDevicePath().find("usbserial")!=string::npos)) {
-                names.push_back(devices[i].getDevicePath());
-            }
-        }
-        return names;
-    }
-    
     ~ofxUltimaker() {
         cout << "~ofxUltimaker" << endl;
-        stopThread();
+        unlockDevice(deviceName);
+        if (isThreadRunning()) stopThread();
     }
     
 };
